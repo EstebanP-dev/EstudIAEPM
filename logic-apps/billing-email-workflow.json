@@ -1,0 +1,254 @@
+{
+  "definition": {
+    "$schema": "https://schema.management.azure.com/providers/Microsoft.Logic/schemas/2016-06-01/workflowdefinition.json#",
+    "contentVersion": "1.0.0.0",
+    "parameters": {
+      "$connections": {
+        "defaultValue": {},
+        "type": "Object"
+      }
+    },
+    "triggers": {
+      "Recurrence": {
+        "recurrence": {
+          "frequency": "Month",
+          "interval": 1,
+          "schedule": {
+            "monthDays": [5]
+          }
+        },
+        "type": "Recurrence",
+        "description": "Se ejecuta el 5 de cada mes para enviar facturas"
+      }
+    },
+    "actions": {
+      "InitializeMeters": {
+        "runAfter": {},
+        "type": "InitializeVariable",
+        "inputs": {
+          "variables": [
+            {
+              "name": "MetersToProcess",
+              "type": "array",
+              "value": []
+            }
+          ]
+        }
+      },
+      "GetMetersFromSQL": {
+        "runAfter": {
+          "InitializeMeters": [
+            "Succeeded"
+          ]
+        },
+        "type": "ApiConnection",
+        "inputs": {
+          "host": {
+            "connection": {
+              "name": "@parameters('$connections')['sql']['connectionId']"
+            }
+          },
+          "method": "post",
+          "body": {
+            "query": "SELECT DISTINCT\n    [m].[meter_id],\n    [m].[meter_code],\n    [m].[address],\n    [m].[notification_email],\n    [m].[socioeconomic_stratum],\n    [st].[tariff_kwh],\n    ISNULL([r].[current_reading], 0) AS [current_reading],\n    [m].[zero_consumption_periods],\n    [m].[historical_avg_consumption_kwh],\n    [th].[tax_pct]\nFROM [dbo].[meters] AS [m]\nLEFT JOIN [dbo].[stratum_tariffs] AS [st]\n    ON [st].[stratum_id] = [m].[socioeconomic_stratum]\n    AND [st].[is_active] = 1\nLEFT JOIN [dbo].[readings] AS [r]\n    ON [r].[meter_id] = [m].[meter_id]\n    AND [r].[status] IN ('ACCEPTED', 'ANOMALOUS')\nLEFT JOIN [dbo].[validation_thresholds] AS [th]\n    ON [th].[is_active] = 1\nWHERE [m].[is_active] = 1\nAND [m].[notification_email] IS NOT NULL"
+          }
+        },
+        "description": "Obtiene todos los medidores activos con sus datos de facturación"
+      },
+      "ForEachMeter": {
+        "runAfter": {
+          "GetMetersFromSQL": [
+            "Succeeded"
+          ]
+        },
+        "type": "Foreach",
+        "inputs": {
+          "from": "@body('GetMetersFromSQL')['recordsets'][0]",
+          "actions": {
+            "GetTemplateFromBlobStorage": {
+              "runAfter": {},
+              "type": "ApiConnection",
+              "inputs": {
+                "host": {
+                  "connection": {
+                    "name": "@parameters('$connections')['azureblob']['connectionId']"
+                  }
+                },
+                "method": "get",
+                "path": "/datasets/default/files/@{encodeURIComponent('/email-templates/template.html')}/content"
+              },
+              "description": "Obtiene el template HTML de Azure Blob Storage"
+            },
+            "CalculateConsumption": {
+              "runAfter": {
+                "GetTemplateFromBlobStorage": [
+                  "Succeeded"
+                ]
+              },
+              "type": "Compose",
+              "inputs": "@sub(items('ForEachMeter')['current_reading'], items('ForEachMeter')['previous_reading'])",
+              "description": "Calcula el consumo: lectura actual - lectura anterior"
+            },
+            "CalculateEnergyCost": {
+              "runAfter": {
+                "CalculateConsumption": [
+                  "Succeeded"
+                ]
+              },
+              "type": "Compose",
+              "inputs": "@mul(outputs('CalculateConsumption'), items('ForEachMeter')['tariff_kwh'])",
+              "description": "Calcula costo de energía: consumo * tarifa"
+            },
+            "CalculateTaxAmount": {
+              "runAfter": {
+                "CalculateEnergyCost": [
+                  "Succeeded"
+                ]
+              },
+              "type": "Compose",
+              "inputs": "@mul(outputs('CalculateEnergyCost'), div(items('ForEachMeter')['tax_pct'], 100))",
+              "description": "Calcula impuesto"
+            },
+            "CalculateTotalAmount": {
+              "runAfter": {
+                "CalculateTaxAmount": [
+                  "Succeeded"
+                ]
+              },
+              "type": "Compose",
+              "inputs": "@add(outputs('CalculateEnergyCost'), outputs('CalculateTaxAmount'))",
+              "description": "Calcula total: energía + impuesto"
+            },
+            "CalculateConsumptionVariance": {
+              "runAfter": {
+                "CalculateTotalAmount": [
+                  "Succeeded"
+                ]
+              },
+              "type": "Compose",
+              "inputs": "@if(equals(items('ForEachMeter')['historical_avg_consumption_kwh'], 0), 0, mul(div(sub(outputs('CalculateConsumption'), items('ForEachMeter')['historical_avg_consumption_kwh']), items('ForEachMeter')['historical_avg_consumption_kwh']), 100))",
+              "description": "Calcula varianza: (actual - promedio) / promedio * 100"
+            },
+            "DetectAnomaly": {
+              "runAfter": {
+                "CalculateConsumptionVariance": [
+                  "Succeeded"
+                ]
+              },
+              "type": "Compose",
+              "inputs": "@if(equals(outputs('CalculateConsumption'), 0), 'CERO', if(greaterOrEquals(outputs('CalculateConsumptionVariance'), 30), 'ALTO', if(lessOrEquals(outputs('CalculateConsumptionVariance'), -50), 'BAJO', 'NORMAL')))",
+              "description": "Detecta anomalías en consumo"
+            },
+            "ReplaceVariablesInTemplate": {
+              "runAfter": {
+                "DetectAnomaly": [
+                  "Succeeded"
+                ]
+              },
+              "type": "Compose",
+              "inputs": "@replace(replace(replace(replace(replace(replace(replace(replace(replace(replace(replace(replace(replace(replace(replace(replace(replace(replace(replace(replace(replace(replace(replace(replace(replace(replace(replace(replace(\nbody('GetTemplateFromBlobStorage'),\n'{{meter_code}}',\nitems('ForEachMeter')['meter_code']),\n'{{address}}',\nitems('ForEachMeter')['address']),\n'{{socioeconomic_stratum}}',\nstring(items('ForEachMeter')['socioeconomic_stratum'])),\n'{{notification_email}}',\nitems('ForEachMeter')['notification_email']),\n'{{billing_period}}',\nconcat('01 de ', formatDateTime(utcNow(), 'MMMM'), ' - ', string(day(addDays(startOfMonth(utcNow()), 32))), ' de ', formatDateTime(utcNow(), 'MMMM yyyy'))),\n'{{issue_date}}',\nformatDateTime(utcNow(), 'dd de MMMM de yyyy')),\n'{{due_date}}',\nformatDateTime(addDays(utcNow(), 15), 'dd de MMMM de yyyy')),\n'{{previous_reading}}',\nstring(items('ForEachMeter')['previous_reading'])),\n'{{current_reading}}',\nstring(items('ForEachMeter')['current_reading'])),\n'{{consumption_kwh}}',\nstring(outputs('CalculateConsumption'))),\n'{{daily_average}}',\nstring(div(outputs('CalculateConsumption'), 30))),\n'{{historical_avg_consumption_kwh}}',\nstring(items('ForEachMeter')['historical_avg_consumption_kwh'])),\n'{{historical_daily_average}}',\nstring(div(items('ForEachMeter')['historical_avg_consumption_kwh'], 30))),\n'{{historical_average_months}}',\n'12'),\n'{{tariff_kwh}}',\nstring(items('ForEachMeter')['tariff_kwh'])),\n'{{energy_cost}}',\nstring(outputs('CalculateEnergyCost'))),\n'{{tax_pct}}',\nstring(items('ForEachMeter')['tax_pct'])),\n'{{tax_amount}}',\nstring(outputs('CalculateTaxAmount'))),\n'{{adjustments}}',\n'0.00'),\n'{{total_amount}}',\nstring(outputs('CalculateTotalAmount'))),\n'{{consumption_variance}}',\nstring(outputs('CalculateConsumptionVariance'))),\n'{{cost_variance}}',\nstring(outputs('CalculateConsumptionVariance'))),\n'{{historical_avg_cost}}',\nstring(mul(items('ForEachMeter')['historical_avg_consumption_kwh'], items('ForEachMeter')['tariff_kwh']))),\n'{{anomaly_type}}',\noutputs('DetectAnomaly')),\n'{{anomaly_percentage}}',\nstring(abs(outputs('CalculateConsumptionVariance'))))\n",
+              "description": "Reemplaza todas las variables en el template HTML"
+            },
+            "RemoveAnomalySection": {
+              "runAfter": {
+                "ReplaceVariablesInTemplate": [
+                  "Succeeded"
+                ]
+              },
+              "type": "Compose",
+              "inputs": "@if(equals(outputs('DetectAnomaly'), 'NORMAL'), replace(replace(outputs('ReplaceVariablesInTemplate'), '{{#if_anomaly}}', ''), '{{/if_anomaly}}', ''), outputs('ReplaceVariablesInTemplate'))",
+              "description": "Si no hay anomalía, mantiene la sección. Si la hay, la muestra."
+            },
+            "RemoveZeroConsumptionSection": {
+              "runAfter": {
+                "RemoveAnomalySection": [
+                  "Succeeded"
+                ]
+              },
+              "type": "Compose",
+              "inputs": "@if(equals(outputs('CalculateConsumption'), 0), replace(replace(outputs('RemoveAnomalySection'), '{{#if_zero_consumption}}', ''), '{{/if_zero_consumption}}', ''), outputs('RemoveAnomalySection'))",
+              "description": "Si hay consumo cero, muestra la alerta. Si no, la elimina."
+            },
+            "SendEmailViaSendGrid": {
+              "runAfter": {
+                "RemoveZeroConsumptionSection": [
+                  "Succeeded"
+                ]
+              },
+              "type": "ApiConnection",
+              "inputs": {
+                "host": {
+                  "connection": {
+                    "name": "@parameters('$connections')['sendgrid']['connectionId']"
+                  }
+                },
+                "method": "post",
+                "body": {
+                  "personalizations": [
+                    {
+                      "to": [
+                        {
+                          "email": "@items('ForEachMeter')['notification_email']"
+                        }
+                      ]
+                    }
+                  ],
+                  "from": {
+                    "email": "facturas@epm.com.co",
+                    "name": "EPM - Facturas"
+                  },
+                  "subject": "@concat('Factura de Consumo - Medidor ', items('ForEachMeter')['meter_code'], ' - ', formatDateTime(utcNow(), 'MMMM yyyy'))",
+                  "content": [
+                    {
+                      "type": "text/html",
+                      "value": "@outputs('RemoveZeroConsumptionSection')"
+                    }
+                  ],
+                  "replyToList": [
+                    {
+                      "email": "soporte@epm.com.co",
+                      "name": "Soporte EPM"
+                    }
+                  ]
+                }
+              },
+              "description": "Envía el correo con SendGrid"
+            },
+            "LogSuccessfulSend": {
+              "runAfter": {
+                "SendEmailViaSendGrid": [
+                  "Succeeded"
+                ]
+              },
+              "type": "Compose",
+              "inputs": "@{\n  'status': 'success',\n  'meter_code': items('ForEachMeter')['meter_code'],\n  'email': items('ForEachMeter')['notification_email'],\n  'timestamp': utcNow()\n}",
+              "description": "Log de envío exitoso"
+            }
+          }
+        }
+      }
+    },
+    "outputs": {}
+  },
+  "parameters": {
+    "$connections": {
+      "value": {
+        "sql": {
+          "connectionId": "/subscriptions/{subscriptionId}/resourceGroups/{resourceGroup}/providers/Microsoft.Web/connections/sql",
+          "connectionName": "sql",
+          "id": "/subscriptions/{subscriptionId}/providers/Microsoft.Web/locations/eastus/managedApis/sql"
+        },
+        "azureblob": {
+          "connectionId": "/subscriptions/{subscriptionId}/resourceGroups/{resourceGroup}/providers/Microsoft.Web/connections/azureblob",
+          "connectionName": "azureblob",
+          "id": "/subscriptions/{subscriptionId}/providers/Microsoft.Web/locations/eastus/managedApis/azureblob"
+        },
+        "sendgrid": {
+          "connectionId": "/subscriptions/{subscriptionId}/resourceGroups/{resourceGroup}/providers/Microsoft.Web/connections/sendgrid",
+          "connectionName": "sendgrid",
+          "id": "/subscriptions/{subscriptionId}/providers/Microsoft.Web/locations/eastus/managedApis/sendgrid"
+        }
+      }
+    }
+  }
+}

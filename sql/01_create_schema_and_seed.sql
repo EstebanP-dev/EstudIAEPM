@@ -38,6 +38,7 @@ BEGIN TRY
     CREATE TABLE dbo.validation_thresholds (
         threshold_id                      BIGINT IDENTITY(1,1) NOT NULL,
         atypical_consumption_pct          DECIMAL(6,2) NOT NULL,
+        tax_pct                           DECIMAL(5,2) NOT NULL,
         zero_consumption_periods          TINYINT NOT NULL,
         negative_reading_min_kwh          DECIMAL(18,3) NOT NULL,
         historical_average_months         TINYINT NOT NULL,
@@ -118,7 +119,7 @@ BEGIN TRY
         tariff_kwh                       DECIMAL(12,4) NOT NULL,
         billable_consumption_kwh         DECIMAL(18,3) NOT NULL,
         subtotal                         DECIMAL(18,2) NOT NULL,
-        tax_pct                          DECIMAL(5,2) NOT NULL CONSTRAINT DF_preinvoices_tax DEFAULT (19.00),
+        tax_pct                          DECIMAL(5,2) NOT NULL,
         tax_amount                       DECIMAL(18,2) NOT NULL,
         total_amount                     DECIMAL(18,2) NOT NULL,
         notification_status              VARCHAR(15) NOT NULL CONSTRAINT DF_preinvoices_notif DEFAULT ('PENDING'),
@@ -132,13 +133,14 @@ BEGIN TRY
     /* Seed: validation thresholds */
     INSERT INTO dbo.validation_thresholds (
         atypical_consumption_pct,
+        tax_pct,
         zero_consumption_periods,
         negative_reading_min_kwh,
         historical_average_months,
         is_active
     )
     VALUES
-        (300.00, 3, 0.000, 6, 1);
+        (300.00, 19.00, 3, 0.000, 6, 1);
 
     /* Seed: strata */
     INSERT INTO dbo.strata (stratum_id, stratum_name)
@@ -393,6 +395,8 @@ BEGIN TRY
 
     ALTER TABLE dbo.validation_thresholds
         ADD CONSTRAINT CK_thresholds_atypical_pct CHECK (atypical_consumption_pct BETWEEN 100.00 AND 10000.00);
+    ALTER TABLE dbo.validation_thresholds
+        ADD CONSTRAINT CK_thresholds_tax_pct CHECK (tax_pct BETWEEN 0.00 AND 100.00);
     ALTER TABLE dbo.validation_thresholds
         ADD CONSTRAINT CK_thresholds_zero_periods CHECK (zero_consumption_periods BETWEEN 1 AND 12);
     ALTER TABLE dbo.validation_thresholds

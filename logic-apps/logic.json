@@ -1,0 +1,288 @@
+{
+  "definition": {
+    "$schema": "https://schema.management.azure.com/providers/Microsoft.Logic/schemas/2019-05-01/workflowdefinition.json#",
+    "triggers": {
+      "When_BlobCreated_EventGrid": {
+        "type": "ApiConnectionWebhook",
+        "inputs": {
+          "host": {
+            "connection": {
+              "name": "@parameters('$connections')['eventgrid']['connectionId']"
+            }
+          },
+          "path": "/subscriptions/@{parameters('subscriptionId')}/resourceGroups/@{parameters('resourceGroupName')}/providers/Microsoft.EventGrid/eventSubscriptions/@{parameters('eventSubscriptionName')}/generateWebhook"
+        }
+      }
+    },
+    "actions": {
+      "Get_blob_content": {
+        "type": "ApiConnection",
+        "inputs": {
+          "host": {
+            "connection": {
+              "name": "@parameters('$connections')['blob']['connectionId']"
+            }
+          },
+          "method": "get",
+          "path": "/datasets/default/files/@{triggerBody()?['subject']}/content"
+        }
+      },
+      "Compose_text": {
+        "type": "Compose",
+        "inputs": "@base64ToString(body('Get_blob_content'))"
+      },
+      "Compose_rows": {
+        "type": "Compose",
+        "inputs": "@skip(split(outputs('Compose_text'), '\n'), 1)"
+      },
+      "For_each_row": {
+        "type": "Foreach",
+        "runtimeConfiguration": {
+          "concurrency": {
+            "repetitions": 10
+          }
+        },
+        "foreach": "@outputs('Compose_rows')",
+        "actions": {
+          "Compose_columns": {
+            "type": "Compose",
+            "inputs": "@split(items('For_each_row'), ',')"
+          },
+          "Set_meter_code": {
+            "type": "Compose",
+            "inputs": "@trim(outputs('Compose_columns')[0])"
+          },
+          "Set_period_date": {
+            "type": "Compose",
+            "inputs": "@trim(outputs('Compose_columns')[1])"
+          },
+          "Set_current_reading": {
+            "type": "Compose",
+            "inputs": "@float(trim(outputs('Compose_columns')[2]))"
+          },
+          "Get_context": {
+            "type": "ApiConnection",
+            "inputs": {
+              "host": {
+                "connection": {
+                  "name": "@parameters('$connections')['sql']['connectionId']"
+                }
+              },
+              "method": "post",
+              "path": "/v2/datasets/default/query/sql",
+              "body": {
+                "query": "SELECT TOP 1 m.meter_id, m.meter_code, m.customer_id, m.address, m.notification_email, m.socioeconomic_stratum, m.zero_consumption_periods AS meter_zero_consumption_periods, m.increase_threshold_pct, m.average_window_periods, m.historical_avg_consumption_kwh, vt.atypical_consumption_pct, vt.zero_consumption_periods AS global_zero_consumption_periods, vt.negative_reading_min_kwh, vt.historical_average_months, st.tariff_kwh AS active_tariff_kwh, ISNULL((SELECT TOP 1 r.current_reading FROM dbo.readings r WHERE r.meter_id = m.meter_id AND r.status IN ('ACCEPTED','ANOMALOUS') ORDER BY r.period_date DESC), 0) AS previous_reading, ISNULL((SELECT AVG(CAST(x.consumption_kwh AS DECIMAL(18,3))) FROM (SELECT TOP (CASE WHEN m.average_window_periods < 1 THEN 1 ELSE m.average_window_periods END) r2.consumption_kwh FROM dbo.readings r2 WHERE r2.meter_id = m.meter_id AND r2.status IN ('ACCEPTED','ANOMALOUS') ORDER BY r2.period_date DESC) x), 0) AS historical_avg_consumption_kwh_calc, ISNULL((SELECT COUNT(1) FROM (SELECT TOP (CASE WHEN m.zero_consumption_periods < 1 THEN 1 ELSE m.zero_consumption_periods END) r3.consumption_kwh FROM dbo.readings r3 WHERE r3.meter_id = m.meter_id AND r3.status IN ('ACCEPTED','ANOMALOUS') ORDER BY r3.period_date DESC) z WHERE z.consumption_kwh = 0), 0) AS previous_zero_consumption_periods FROM dbo.meters m CROSS JOIN dbo.validation_thresholds vt INNER JOIN dbo.stratum_tariffs st ON st.stratum_id = m.socioeconomic_stratum AND st.is_active = 1 WHERE m.meter_code = '@{outputs('Set_meter_code')}' AND m.is_active = 1 AND vt.is_active = 1;"
+              }
+            }
+          },
+          "If_R1_negative": {
+            "type": "If",
+            "expression": {
+              "less": [
+                "@outputs('Set_current_reading')",
+                "@coalesce(body('Get_context')?['negative_reading_min_kwh'], 0)"
+              ]
+            },
+            "actions": {
+              "Insert_rejected_reading_R1": {
+                "type": "ApiConnection",
+                "inputs": {
+                  "host": {
+                    "connection": {
+                      "name": "@parameters('$connections')['sql']['connectionId']"
+                    }
+                  },
+                  "method": "post",
+                  "path": "/v2/datasets/default/query/sql",
+                  "body": {
+                    "query": "INSERT INTO dbo.readings (meter_id, period_date, previous_reading, current_reading, status, reason, source_file, row_hash) VALUES (..., 'REJECTED', 'R1_NEGATIVE_READING', ...);"
+                  }
+                }
+              },
+              "SendGrid_alert_ops": {
+                "type": "ApiConnection",
+                "inputs": {
+                  "host": {
+                    "connection": {
+                      "name": "@parameters('$connections')['sendgrid']['connectionId']"
+                    }
+                  },
+                  "method": "post",
+                  "body": {
+                    "to": "operaciones@tuempresa.com",
+                    "subject": "Lectura rechazada - Regla 1",
+                    "content": "..."
+                  }
+                }
+              }
+            },
+            "else": {
+              "actions": {
+                "If_R2_lower_than_previous": {
+                  "type": "If",
+                  "expression": {
+                    "less": [
+                      "@outputs('Set_current_reading')",
+                      "@body('Get_context')?['previous_reading']"
+                    ]
+                  },
+                  "actions": {
+                    "Insert_rejected_reading_R2": {
+                      "type": "ApiConnection",
+                      "inputs": {
+                        "host": {
+                          "connection": {
+                            "name": "@parameters('$connections')['sql']['connectionId']"
+                          }
+                        },
+                        "method": "post",
+                        "body": {
+                          "query": "INSERT INTO dbo.readings (...) VALUES (..., 'REJECTED', 'R2_CURRENT_LOWER_THAN_PREVIOUS', ...);"
+                        }
+                      }
+                    }
+                  },
+                  "else": {
+                    "actions": {
+                      "Compose_consumption": {
+                        "type": "Compose",
+                        "inputs": "@sub(outputs('Set_current_reading'), body('Get_context')?['previous_reading'])"
+                      },
+                      "If_R3_zero_streak": {
+                        "type": "If",
+                        "expression": {
+                          "and": [
+                            {
+                              "equals": [
+                                "@outputs('Compose_consumption')",
+                                0
+                              ]
+                            },
+                            {
+                              "greaterOrEquals": [
+                                "@body('Get_context')?['zero_consumption_periods']",
+                                "@body('Get_context')?['meter_zero_consumption_periods']"
+                              ]
+                            }
+                          ]
+                        },
+                        "actions": {
+                          "Insert_anomalous_reading_R3": {
+                            "type": "ApiConnection",
+                            "inputs": {
+                              "host": {
+                                "connection": {
+                                  "name": "@parameters('$connections')['sql']['connectionId']"
+                                }
+                              },
+                              "method": "post",
+                              "body": {
+                                "query": "INSERT INTO dbo.readings (...) VALUES (..., 'ANOMALOUS', 'R3_ZERO_CONSUMPTION_STREAK', ...);"
+                              }
+                            }
+                          }
+                        },
+                        "else": {
+                          "actions": {
+                            "If_R4_atypical": {
+                              "type": "If",
+                              "expression": {
+                                "greater": [
+                                  "@outputs('Compose_consumption')",
+                                  "@mul(body('Get_context')?['historical_avg_consumption_kwh'], div(body('Get_context')?['atypical_consumption_pct'], 100))"
+                                ]
+                              },
+                              "actions": {
+                                "Insert_anomalous_reading_R4": {
+                                  "type": "ApiConnection",
+                                  "inputs": {
+                                    "host": {
+                                      "connection": {
+                                        "name": "@parameters('$connections')['sql']['connectionId']"
+                                      }
+                                    },
+                                    "method": "post",
+                                    "body": {
+                                      "query": "INSERT INTO dbo.readings (...) VALUES (..., 'ANOMALOUS', 'R4_ATYPICAL_CONSUMPTION', ...);"
+                                    }
+                                  }
+                                }
+                              },
+                              "else": {
+                                "actions": {
+                                  "Insert_accepted_reading": {
+                                    "type": "ApiConnection",
+                                    "inputs": {
+                                      "host": {
+                                        "connection": {
+                                          "name": "@parameters('$connections')['sql']['connectionId']"
+                                        }
+                                      },
+                                      "method": "post",
+                                      "body": {
+                                        "query": "INSERT INTO dbo.readings (...) VALUES (..., 'ACCEPTED', NULL, ...);"
+                                      }
+                                    }
+                                  },
+                                  "Insert_preinvoice": {
+                                    "type": "ApiConnection",
+                                    "inputs": {
+                                      "host": {
+                                        "connection": {
+                                          "name": "@parameters('$connections')['sql']['connectionId']"
+                                        }
+                                      },
+                                      "method": "post",
+                                      "body": {
+                                        "query": "INSERT INTO dbo.preinvoices (...) VALUES (..., @coalesce(body('Get_context')?['active_tariff_kwh'], 0), ...);"
+                                      }
+                                    }
+                                  },
+                                  "SendGrid_to_user": {
+                                    "type": "ApiConnection",
+                                    "inputs": {
+                                      "host": {
+                                        "connection": {
+                                          "name": "@parameters('$connections')['sendgrid']['connectionId']"
+                                        }
+                                      },
+                                      "method": "post",
+                                      "body": {
+                                        "to": "@body('Get_context')?['notification_email']",
+                                        "subject": "Pre-factura disponible",
+                                        "content": "..."
+                                      }
+                                    }
+                                  }
+                                }
+                              }
+                            }
+                          }
+                        }
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          }
+        }
+      },
+      "Move_blob_to_processed": {
+        "type": "ApiConnection",
+        "inputs": {
+          "host": {
+            "connection": {
+              "name": "@parameters('$connections')['blob']['connectionId']"
+            }
+          },
+          "method": "put",
+          "path": "/datasets/default/files/@{triggerBody()?['subject']}",
+          "body": {
+            "destination": "lecturas-procesadas/@{utcNow('yyyy/MM/dd')}/@{last(split(triggerBody()?['subject'], '/'))}"
+          }
+        }
+      }
+    }
+  }
+}

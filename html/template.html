@@ -1,0 +1,617 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Factura de Consumo - EPM</title>
+    <style type="text/css">
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            line-height: 1.6;
+            color: #000;
+            background-color: #f5f5f5;
+        }
+
+        .container {
+            max-width: 800px;
+            margin: 0 auto;
+            background-color: #fff;
+            box-shadow: 0 0 10px rgba(0, 0, 0, 0.1);
+        }
+
+        /* ===== HEADER ===== */
+        .header {
+            background: linear-gradient(135deg, #0d9648 0%, #0a7535 100%);
+            padding: 30px 20px;
+            text-align: center;
+            border-bottom: 4px solid #9fcf67;
+            position: relative;
+        }
+
+        .logo {
+            max-width: 150px;
+            height: auto;
+            margin-bottom: 15px;
+            display: block;
+            margin-left: auto;
+            margin-right: auto;
+        }
+
+        .company-name {
+            color: #fff;
+            font-size: 28px;
+            font-weight: bold;
+            margin-bottom: 5px;
+            letter-spacing: 1px;
+        }
+
+        .company-tagline {
+            color: #9fcf67;
+            font-size: 12px;
+            font-weight: 300;
+            text-transform: uppercase;
+        }
+
+        /* ===== INVOICE TYPE ===== */
+        .invoice-badge {
+            background-color: #9fcf67;
+            color: #000;
+            display: inline-block;
+            padding: 8px 16px;
+            border-radius: 4px;
+            font-weight: bold;
+            font-size: 12px;
+            margin-top: 15px;
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+        }
+
+        /* ===== INFO GRID ===== */
+        .info-grid {
+            display: table;
+            width: 100%;
+            padding: 20px;
+            background-color: #f9f9f9;
+            border-bottom: 1px solid #e0e0e0;
+        }
+
+        .info-column {
+            display: table-cell;
+            padding: 10px 15px;
+            vertical-align: top;
+            width: 50%;
+        }
+
+        .info-row {
+            margin-bottom: 15px;
+        }
+
+        .label {
+            font-size: 11px;
+            font-weight: bold;
+            color: #0d9648;
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+            display: block;
+            margin-bottom: 4px;
+        }
+
+        .value {
+            font-size: 14px;
+            color: #000;
+            font-weight: 500;
+        }
+
+        /* ===== MAIN CONTENT ===== */
+        .content {
+            padding: 30px 20px;
+        }
+
+        .section-title {
+            background-color: #0d9648;
+            color: #fff;
+            padding: 12px 15px;
+            font-size: 14px;
+            font-weight: bold;
+            text-transform: uppercase;
+            margin-bottom: 20px;
+            letter-spacing: 0.5px;
+            border-left: 4px solid #9fcf67;
+        }
+
+        /* ===== CONSUMPTION DETAILS TABLE ===== */
+        .details-table {
+            width: 100%;
+            border-collapse: collapse;
+            margin-bottom: 30px;
+        }
+
+        .details-table thead {
+            background-color: #f0f0f0;
+        }
+
+        .details-table th {
+            padding: 12px;
+            text-align: left;
+            font-size: 12px;
+            font-weight: bold;
+            color: #0d9648;
+            border-bottom: 2px solid #0d9648;
+            text-transform: uppercase;
+            letter-spacing: 0.3px;
+        }
+
+        .details-table td {
+            padding: 12px;
+            border-bottom: 1px solid #e0e0e0;
+            font-size: 13px;
+        }
+
+        .details-table tbody tr:nth-child(even) {
+            background-color: #f9f9f9;
+        }
+
+        .details-table tbody tr:hover {
+            background-color: #f0f8f5;
+        }
+
+        .text-right {
+            text-align: right;
+        }
+
+        .text-center {
+            text-align: center;
+        }
+
+        /* ===== SUMMARY BOX ===== */
+        .summary-section {
+            background-color: #f9f9f9;
+            border: 1px solid #e0e0e0;
+            border-radius: 4px;
+            padding: 20px;
+            margin-bottom: 30px;
+        }
+
+        .summary-grid {
+            display: table;
+            width: 100%;
+        }
+
+        .summary-item {
+            display: table-cell;
+            padding: 15px;
+            vertical-align: middle;
+            width: 33.333%;
+            border-right: 1px solid #e0e0e0;
+        }
+
+        .summary-item:last-child {
+            border-right: none;
+        }
+
+        .summary-label {
+            font-size: 11px;
+            font-weight: bold;
+            color: #a1a1a5;
+            text-transform: uppercase;
+            display: block;
+            margin-bottom: 6px;
+            letter-spacing: 0.3px;
+        }
+
+        .summary-value {
+            font-size: 20px;
+            font-weight: bold;
+            color: #0d9648;
+        }
+
+        /* ===== CHARGES TABLE ===== */
+        .charges-table {
+            width: 100%;
+            margin-bottom: 30px;
+        }
+
+        .charges-table tr {
+            border-bottom: 1px solid #e0e0e0;
+        }
+
+        .charges-table td {
+            padding: 12px 0;
+            font-size: 13px;
+        }
+
+        .charges-table .label-cell {
+            color: #333;
+            font-weight: 500;
+        }
+
+        .charges-table .value-cell {
+            text-align: right;
+        }
+
+        .charges-table .total-row {
+            background-color: #0d9648;
+            color: #fff;
+            font-weight: bold;
+            font-size: 16px;
+        }
+
+        .charges-table .total-row td {
+            padding: 16px 12px;
+            border-bottom: none;
+        }
+
+        /* ===== IMPORTANT BOX ===== */
+        .alert-box {
+            background-color: #fff3cd;
+            border-left: 4px solid #ffc107;
+            padding: 15px;
+            margin-bottom: 20px;
+            border-radius: 4px;
+        }
+
+        .alert-title {
+            color: #000;
+            font-weight: bold;
+            font-size: 13px;
+            margin-bottom: 6px;
+            text-transform: uppercase;
+        }
+
+        .alert-message {
+            color: #333;
+            font-size: 12px;
+            line-height: 1.5;
+        }
+
+        /* ===== FOOTER ===== */
+        .footer {
+            background-color: #f0f0f0;
+            padding: 20px;
+            border-top: 2px solid #0d9648;
+        }
+
+        .footer-content {
+            text-align: center;
+            font-size: 12px;
+            color: #a1a1a5;
+            margin-bottom: 15px;
+        }
+
+        .contact-info {
+            background-color: #fff;
+            padding: 15px;
+            border-radius: 4px;
+            margin-bottom: 15px;
+        }
+
+        .contact-item {
+            margin-bottom: 8px;
+            font-size: 12px;
+        }
+
+        .contact-item strong {
+            color: #0d9648;
+            display: block;
+            font-size: 10px;
+            text-transform: uppercase;
+            margin-bottom: 2px;
+        }
+
+        .contact-item span {
+            color: #333;
+        }
+
+        .divider {
+            height: 1px;
+            background-color: #e0e0e0;
+            margin: 15px 0;
+        }
+
+        .footer-text {
+            font-size: 11px;
+            color: #a1a1a5;
+            line-height: 1.6;
+            text-align: center;
+            margin-top: 15px;
+        }
+
+        /* ===== RESPONSIVE ===== */
+        @media (max-width: 600px) {
+            .info-column {
+                display: block;
+                width: 100%;
+                padding: 10px 0;
+            }
+
+            .summary-item {
+                display: block;
+                width: 100%;
+                padding: 12px 0;
+                border-right: none;
+                border-bottom: 1px solid #e0e0e0;
+            }
+
+            .summary-item:last-child {
+                border-bottom: none;
+            }
+
+            .company-name {
+                font-size: 22px;
+            }
+
+            .details-table,
+            .details-table thead,
+            .details-table tbody,
+            .details-table th,
+            .details-table td,
+            .details-table tr {
+                display: block;
+            }
+
+            .details-table tr {
+                margin-bottom: 15px;
+                border: 1px solid #e0e0e0;
+                border-radius: 4px;
+                overflow: hidden;
+            }
+
+            .details-table th {
+                display: none;
+            }
+
+            .details-table td {
+                text-align: right;
+                padding-left: 50%;
+                position: relative;
+                border: none;
+                border-bottom: 1px solid #f0f0f0;
+            }
+
+            .details-table td:before {
+                content: attr(data-label);
+                position: absolute;
+                left: 6px;
+                font-weight: bold;
+                color: #0d9648;
+                text-transform: uppercase;
+                font-size: 11px;
+            }
+        }
+
+        /* ===== UTILITY CLASSES ===== */
+        .highlight {
+            background-color: #e8f6f1;
+            padding: 2px 6px;
+            border-radius: 2px;
+            font-weight: 500;
+            color: #0d9648;
+        }
+
+        .attention {
+            background-color: #fff3e0;
+            padding: 2px 6px;
+            border-radius: 2px;
+            font-weight: 500;
+            color: #d84315;
+        }
+
+    </style>
+</head>
+<body>
+    <div class="container">
+        <!-- HEADER -->
+        <div class="header">
+            <img src="cid:logo.png" alt="EPM" class="logo">
+            <div class="company-name">EPM</div>
+            <div class="company-tagline">Empresa de Energía de Pereira</div>
+            <div class="invoice-badge">Factura de Consumo de Energía</div>
+        </div>
+
+        <!-- CUSTOMER & INVOICE INFO -->
+        <div class="info-grid">
+            <div class="info-column">
+                <div class="info-row">
+                    <span class="label">Número de Medidor</span>
+                    <span class="value">{{meter_code}}</span>
+                </div>
+                <div class="info-row">
+                    <span class="label">Dirección</span>
+                    <span class="value">{{address}}</span>
+                </div>
+                <div class="info-row">
+                    <span class="label">Estrato Socioeconómico</span>
+                    <span class="value">Estrato {{socioeconomic_stratum}}</span>
+                </div>
+            </div>
+            <div class="info-column">
+                <div class="info-row">
+                    <span class="label">Período de Facturación</span>
+                    <span class="value">{{billing_period}}</span>
+                </div>
+                <div class="info-row">
+                    <span class="label">Fecha de Emisión</span>
+                    <span class="value">{{issue_date}}</span>
+                </div>
+                <div class="info-row">
+                    <span class="label">Vencimiento</span>
+                    <span class="value">{{due_date}}</span>
+                </div>
+            </div>
+        </div>
+
+        <!-- MAIN CONTENT -->
+        <div class="content">
+            <!-- CONSUMPTION SUMMARY -->
+            <div class="section-title">📊 Resumen de Consumo</div>
+            <div class="summary-section">
+                <div class="summary-grid">
+                    <div class="summary-item">
+                        <span class="summary-label">Lectura Anterior</span>
+                        <span class="summary-value">{{previous_reading}}</span>
+                        <span style="font-size: 11px; color: #a1a1a5;">kWh</span>
+                    </div>
+                    <div class="summary-item">
+                        <span class="summary-label">Lectura Actual</span>
+                        <span class="summary-value">{{current_reading}}</span>
+                        <span style="font-size: 11px; color: #a1a1a5;">kWh</span>
+                    </div>
+                    <div class="summary-item">
+                        <span class="summary-label">Consumo Este Período</span>
+                        <span class="summary-value">{{consumption_kwh}}</span>
+                        <span style="font-size: 11px; color: #a1a1a5;">kWh</span>
+                    </div>
+                </div>
+            </div>
+
+            <!-- CONSUMPTION DETAILS -->
+            <div class="section-title">📋 Detalles del Consumo</div>
+            <table class="details-table">
+                <thead>
+                    <tr>
+                        <th>Concepto</th>
+                        <th class="text-center">Unidad</th>
+                        <th class="text-right">Cantidad</th>
+                        <th class="text-right">Tarifa</th>
+                        <th class="text-right">Subtotal</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    <tr>
+                        <td data-label="Concepto">Consumo de Energía</td>
+                        <td class="text-center" data-label="Unidad">kWh</td>
+                        <td class="text-right" data-label="Cantidad">{{consumption_kwh}}</td>
+                        <td class="text-right" data-label="Tarifa">$ {{tariff_kwh}}</td>
+                        <td class="text-right" data-label="Subtotal">$ {{energy_cost}}</td>
+                    </tr>
+                    <tr>
+                        <td data-label="Concepto">Impuesto ({{tax_pct}}%)</td>
+                        <td class="text-center" data-label="Unidad">-</td>
+                        <td class="text-right" data-label="Cantidad">-</td>
+                        <td class="text-right" data-label="Tarifa">{{tax_pct}}%</td>
+                        <td class="text-right" data-label="Subtotal">$ {{tax_amount}}</td>
+                    </tr>
+                </tbody>
+            </table>
+
+            <!-- CHARGES SUMMARY -->
+            <div class="section-title">💰 Resumen de Cargos</div>
+            <table class="charges-table">
+                <tr>
+                    <td class="label-cell">Costo de Energía</td>
+                    <td class="value-cell"><strong>$ {{energy_cost}}</strong></td>
+                </tr>
+                <tr>
+                    <td class="label-cell">Impuesto sobre Energía</td>
+                    <td class="value-cell">$ {{tax_amount}}</td>
+                </tr>
+                <tr>
+                    <td class="label-cell">Ajustes / Otros</td>
+                    <td class="value-cell">$ {{adjustments}}</td>
+                </tr>
+                <tr class="total-row">
+                    <td class="label-cell">TOTAL A PAGAR</td>
+                    <td class="value-cell">$ {{total_amount}}</td>
+                </tr>
+            </table>
+
+            <!-- ALERTS & NOTICES -->
+            {{#if_anomaly}}
+            <div class="alert-box">
+                <div class="alert-title">⚠️ Atención - Consumo Anómalo</div>
+                <div class="alert-message">
+                    Se ha detectado un consumo <span class="attention">{{anomaly_type}}</span> en este período.
+                    Esto representa una variación de {{anomaly_percentage}}% respecto al promedio histórico de {{historical_avg_consumption_kwh}} kWh.
+                    Por favor, verifique sus equipos o comuníquese con nosotros si tiene dudas.
+                </div>
+            </div>
+            {{/if_anomaly}}
+
+            {{#if_zero_consumption}}
+            <div class="alert-box">
+                <div class="alert-title">ℹ️ Consumo Cero Registrado</div>
+                <div class="alert-message">
+                    Se ha registrado cero consumo en este período. Esto podría indicar un corte de servicio o una lectura errónea.
+                    Si usted ha realizado consumo durante este período, por favor contáctenos para revisar su medidor.
+                </div>
+            </div>
+            {{/if_zero_consumption}}
+
+            <!-- CONSUMPTION COMPARISON -->
+            <div class="section-title">📈 Comparativa de Consumo</div>
+            <table class="details-table">
+                <thead>
+                    <tr>
+                        <th>Período</th>
+                        <th class="text-center">Consumo (kWh)</th>
+                        <th class="text-center">Costo</th>
+                        <th class="text-center">Promedio Diario</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    <tr>
+                        <td data-label="Período">Este Período</td>
+                        <td class="text-center" data-label="Consumo">{{consumption_kwh}}</td>
+                        <td class="text-center" data-label="Costo">$ {{energy_cost}}</td>
+                        <td class="text-center" data-label="Promedio Diario">{{daily_average}}</td>
+                    </tr>
+                    <tr>
+                        <td data-label="Período">Promedio Histórico ({{historical_average_months}} meses)</td>
+                        <td class="text-center" data-label="Consumo">{{historical_avg_consumption_kwh}}</td>
+                        <td class="text-center" data-label="Costo">$ {{historical_avg_cost}}</td>
+                        <td class="text-center" data-label="Promedio Diario">{{historical_daily_average}}</td>
+                    </tr>
+                    <tr>
+                        <td data-label="Período"><span class="highlight">Variación</span></td>
+                        <td class="text-center" data-label="Consumo"><span class="highlight">{{consumption_variance}}%</span></td>
+                        <td class="text-center" data-label="Costo"><span class="highlight">{{cost_variance}}%</span></td>
+                        <td class="text-center" data-label="Promedio Diario">-</td>
+                    </tr>
+                </tbody>
+            </table>
+
+        </div>
+
+        <!-- FOOTER -->
+        <div class="footer">
+            <div class="contact-info">
+                <div class="contact-item">
+                    <strong>📞 Línea de Servicio al Cliente</strong>
+                    <span>(6) 3148000 - 01800 912 200 (Línea Gratuita)</span>
+                </div>
+                <div class="divider"></div>
+                <div class="contact-item">
+                    <strong>🌐 Portal Web</strong>
+                    <span>www.epm.com.co</span>
+                </div>
+                <div class="divider"></div>
+                <div class="contact-item">
+                    <strong>📍 Oficinas Principales</strong>
+                    <span>Pereira, Risaralda - Colombia</span>
+                </div>
+            </div>
+
+            <div class="divider"></div>
+
+            <div class="footer-content">
+                Esta es una factura de energía eléctrica generada automáticamente por el sistema de EPM.
+            </div>
+
+            <div class="footer-text">
+                <strong>Datos Importantes:</strong><br>
+                • El pago puede realizarse en cualquier banco o centro de atención de EPM<br>
+                • Consulte nuestra plataforma de atención para reportar novedades<br>
+                • En caso de requerimientos especiales, contacte a nuestro servicio al cliente<br>
+                <br>
+                <em>EPM se reserva el derecho de revisar y auditar el consumo registrado en cualquier momento.</em>
+            </div>
+        </div>
+    </div>
+</body>
+</html>
