@@ -24,7 +24,7 @@
             }
           },
           "method": "get",
-          "path": "/datasets/default/files/@{triggerBody()?['subject']}/content"
+          "path": "/datasets/default/files/@{last(split(triggerBody()?['subject'], '/'))}/content"
         }
       },
       "Compose_text": {

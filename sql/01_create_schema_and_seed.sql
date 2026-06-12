@@ -103,7 +103,6 @@ BEGIN TRY
         status                            VARCHAR(10) NOT NULL, -- ACCEPTED | REJECTED | ANOMALOUS
         reason                            NVARCHAR(200) NULL,
         source_file                       NVARCHAR(260) NOT NULL,
-        row_hash                          CHAR(64) NOT NULL,
         created_at_utc                    DATETIME2(3) NOT NULL CONSTRAINT DF_readings_created DEFAULT (SYSUTCDATETIME())
     );
 
@@ -332,8 +331,7 @@ BEGIN TRY
         current_reading,
         status,
         reason,
-        source_file,
-        row_hash
+        source_file
     )
     SELECT
         p.meter_id,
@@ -342,8 +340,7 @@ BEGIN TRY
         p.current_reading,
         p.status,
         p.reason,
-        p.source_file,
-        LOWER(CONVERT(VARCHAR(64), HASHBYTES('SHA2_256', CONCAT(p.meter_code, '|', CONVERT(VARCHAR(10), p.period_date, 23), '|', p.current_reading, '|', p.source_file)), 2))
+        p.source_file
     FROM periods p;
 
     /* Seed: preinvoices for ACCEPTED and ANOMALOUS readings */
@@ -448,17 +445,11 @@ BEGIN TRY
     ALTER TABLE dbo.readings
         ADD CONSTRAINT FK_readings_meters FOREIGN KEY (meter_id) REFERENCES dbo.meters(meter_id);
     ALTER TABLE dbo.readings
-        ADD CONSTRAINT UQ_readings_row_hash UNIQUE (row_hash);
-    ALTER TABLE dbo.readings
         ADD CONSTRAINT UQ_readings_meter_period UNIQUE (meter_id, period_date);
     ALTER TABLE dbo.readings
         ADD CONSTRAINT CK_readings_status CHECK (status IN ('ACCEPTED','REJECTED','ANOMALOUS'));
     ALTER TABLE dbo.readings
         ADD CONSTRAINT CK_readings_reason_required CHECK (status = 'ACCEPTED' OR (reason IS NOT NULL AND LTRIM(RTRIM(reason)) <> ''));
-    ALTER TABLE dbo.readings
-        ADD CONSTRAINT CK_readings_rule1_consistency CHECK (status = 'REJECTED' OR current_reading >= 0);
-    ALTER TABLE dbo.readings
-        ADD CONSTRAINT CK_readings_rule2_consistency CHECK (status = 'REJECTED' OR current_reading >= previous_reading);
 
     ALTER TABLE dbo.preinvoices
         ADD CONSTRAINT PK_preinvoices PRIMARY KEY (preinvoice_id);
